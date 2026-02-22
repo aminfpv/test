@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  WAREHOUSE
+  PROJECT_MANAGER
+  PURCHASING
+}
+
+enum LocationType {
+  WAREHOUSE
+  TRUCK
+  JOB_SITE
+}
+
+enum TxnType {
+  RECEIVE
+  TRANSFER
+  ISSUE
+  RETURN
+  ADJUST
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  READY
+  COMPLETE
+}
+
+model User {
+  id           String           @id @default(cuid())
+  email        String           @unique
+  name         String
+  role         Role
+  passwordHash String
+  ledgers      InventoryLedger[]
+  auditLogs    AuditLog[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model Item {
+  id           String            @id @default(cuid())
+  sku          String            @unique
+  name         String
+  unit         String
+  reorderMin   Int               @default(0)
+  reorderQty   Int               @default(0)
+  leadTimeDays Int               @default(7)
+  ledgers      InventoryLedger[]
+  templateLines BomTemplateLine[]
+  plans        JobMaterialPlan[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+}
+
+model Location {
+  id             String            @id @default(cuid())
+  name           String
+  type           LocationType
+  fromLedgers    InventoryLedger[] @relation("fromLocation")
+  toLedgers      InventoryLedger[] @relation("toLocation")
+  jobs           Job[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+}
+
+model Job {
+  id             String            @id @default(cuid())
+  code           String            @unique
+  name           String
+  type           String
+  status         JobStatus         @default(DRAFT)
+  siteLocationId String
+  siteLocation   Location          @relation(fields: [siteLocationId], references: [id])
+  plans          JobMaterialPlan[]
+  ledgers        InventoryLedger[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+}
+
+model BomTemplate {
+  id        String            @id @default(cuid())
+  jobType   String
+  name      String
+  lines     BomTemplateLine[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model BomTemplateLine {
+  id         String      @id @default(cuid())
+  templateId String
+  template   BomTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item        @relation(fields: [itemId], references: [id])
+  qtyPerUnit Float
+}
+
+model JobMaterialPlan {
+  id         String   @id @default(cuid())
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
+  plannedQty Float
+  issuedQty  Float    @default(0)
+
+  @@unique([jobId, itemId])
+}
+
+model InventoryLedger {
+  id             String    @id @default(cuid())
+  txnType        TxnType
+  itemId         String
+  item           Item      @relation(fields: [itemId], references: [id])
+  fromLocationId String?
+  fromLocation   Location? @relation("fromLocation", fields: [fromLocationId], references: [id])
+  toLocationId   String?
+  toLocation     Location? @relation("toLocation", fields: [toLocationId], references: [id])
+  qty            Float
+  unitCost       Float?
+  jobId          String?
+  job            Job?      @relation(fields: [jobId], references: [id])
+  note           String?
+  createdById    String
+  createdBy      User      @relation(fields: [createdById], references: [id])
+  createdAt      DateTime  @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String
+  actor       User     @relation(fields: [actorUserId], references: [id])
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
