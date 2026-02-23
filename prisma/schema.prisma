@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  WAREHOUSE
+  PROJECT_MANAGER
+  PURCHASING
+}
+
+enum TransactionType {
+  RECEIVE
+  TRANSFER
+  ISSUE
+  RETURN
+  ADJUST
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String
+  role      Role
+  createdAt DateTime   @default(now())
+  audits    AuditLog[]
+}
+
+model Item {
+  id              String                @id @default(cuid())
+  sku             String                @unique
+  name            String
+  unit            String
+  minStockLevel   Int                   @default(0)
+  reorderMultiple Int                   @default(1)
+  leadTimeDays    Int                   @default(7)
+  createdAt       DateTime              @default(now())
+  balances        InventoryBalance[]
+  templateLines   TemplateLine[]
+  pickListLines   PickListLine[]
+  transactions    InventoryTransaction[]
+}
+
+model Location {
+  id          String                @id @default(cuid())
+  code        String                @unique
+  name        String
+  type        String
+  createdAt   DateTime              @default(now())
+  balances    InventoryBalance[]
+  sourceMoves InventoryTransaction[] @relation("SourceLocation")
+  destMoves   InventoryTransaction[] @relation("DestinationLocation")
+}
+
+model InventoryBalance {
+  id         String   @id @default(cuid())
+  itemId     String
+  locationId String
+  quantity   Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  item       Item     @relation(fields: [itemId], references: [id])
+  location   Location @relation(fields: [locationId], references: [id])
+
+  @@unique([itemId, locationId])
+}
+
+model Job {
+  id            String         @id @default(cuid())
+  code          String         @unique
+  name          String
+  status        String
+  locationId    String
+  templateId    String?
+  startDate     DateTime?
+  endDate       DateTime?
+  location      Location       @relation(fields: [locationId], references: [id])
+  template      JobTemplate?   @relation(fields: [templateId], references: [id])
+  pickLists     PickList[]
+  transactions  InventoryTransaction[]
+}
+
+model JobTemplate {
+  id          String         @id @default(cuid())
+  code        String         @unique
+  name        String
+  description String?
+  lines       TemplateLine[]
+  jobs        Job[]
+}
+
+model TemplateLine {
+  id          String      @id @default(cuid())
+  templateId  String
+  itemId      String
+  quantity    Int
+  wastePct    Float       @default(0)
+  template    JobTemplate @relation(fields: [templateId], references: [id])
+  item        Item        @relation(fields: [itemId], references: [id])
+
+  @@unique([templateId, itemId])
+}
+
+model PickList {
+  id         String         @id @default(cuid())
+  jobId       String
+  status      String
+  createdAt   DateTime       @default(now())
+  createdById String
+  job         Job            @relation(fields: [jobId], references: [id])
+  lines       PickListLine[]
+}
+
+model PickListLine {
+  id             String   @id @default(cuid())
+  pickListId      String
+  itemId          String
+  plannedQty      Int
+  availableQty    Int
+  shortageQty     Int
+  suggestedSource String
+  pickList        PickList @relation(fields: [pickListId], references: [id])
+  item            Item     @relation(fields: [itemId], references: [id])
+}
+
+model InventoryTransaction {
+  id                String          @id @default(cuid())
+  type              TransactionType
+  itemId            String
+  fromLocationId    String?
+  toLocationId      String?
+  quantity          Int
+  referenceType     String?
+  referenceId       String?
+  notes             String?
+  jobId             String?
+  createdById       String
+  createdAt         DateTime        @default(now())
+  item              Item            @relation(fields: [itemId], references: [id])
+  fromLocation      Location?       @relation("SourceLocation", fields: [fromLocationId], references: [id])
+  toLocation        Location?       @relation("DestinationLocation", fields: [toLocationId], references: [id])
+  job               Job?            @relation(fields: [jobId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorId     String
+  action      String
+  entity      String
+  entityId    String
+  payload     Json?
+  createdAt   DateTime @default(now())
+  actor       User     @relation(fields: [actorId], references: [id])
+}
